@@ -7,8 +7,8 @@ use Mix.Config
 
 # General application configuration
 # uncomment if you want to use a database
-# config :meep,
-#   ecto_repos: [Meep.Repo]
+config :meep,
+  ecto_repos: [Meep.Repo]
 
 # Configures the endpoint
 config :meep, Meep.Endpoint,
