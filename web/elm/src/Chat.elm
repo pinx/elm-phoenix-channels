@@ -27,6 +27,7 @@ type alias Model =
   { code : String
   , newMessage : String
   , messages : List String
+  , qty : Int
   , phxSocket : Phoenix.Socket.Socket Msg
   }
 
@@ -38,7 +39,7 @@ initPhxSocket =
 
 initModel : String -> Model
 initModel code =
-  Model code "" [] initPhxSocket
+  Model code "" [] 0 initPhxSocket
 
 
 init : List String -> ( Model, Cmd Msg )
@@ -65,11 +66,22 @@ type alias ChatMessage =
   , body : String
   }
 
+type alias ChatData = 
+  { user : String
+  , qty : Int
+  }
+
 chatMessageDecoder : JD.Decoder ChatMessage
 chatMessageDecoder =
   JD.object2 ChatMessage
     ("user" := JD.string)
     ("body" := JD.string)
+
+chatDataDecoder : JD.Decoder ChatData
+chatDataDecoder =
+  JD.object2 ChatData
+    ("user" := JD.string)
+    ("qty" := JD.int)
 
 
 -- UPDATE
@@ -80,6 +92,8 @@ type Msg
   | SetNewMessage String
   | PhoenixMsg (Phoenix.Socket.Msg Msg)
   | ReceiveChatMessage JE.Value
+  | ReceiveData JE.Value
+  | SendData String
   | JoinChannel
   | LeaveChannel
   | ShowJoinedMessage String
@@ -135,6 +149,29 @@ update msg model =
         Err error ->
           ( model, Cmd.none )
 
+    ReceiveData raw ->
+      case JD.decodeValue chatDataDecoder (Debug.log "receiveData" raw) of
+        Ok data ->
+          ( { model | qty = data.qty }
+          , Cmd.none
+          )
+        Err error ->
+          ( (Debug.log "error" model), Cmd.none )
+
+    SendData str ->
+      let
+        payload = (JE.object [ ("user", JE.string model.code), ("qty", JE.string str) ])
+        push' =
+          Phoenix.Push.init "update:qty" "rooms:lobby"
+          |> Phoenix.Push.withPayload payload
+        (phxSocket, phxCmd) = Phoenix.Socket.push push' model.phxSocket
+      in
+        ( { model
+          | phxSocket = phxSocket
+          }
+        , Cmd.map PhoenixMsg phxCmd
+        )
+
     JoinChannel ->
       let
         channel =
@@ -185,6 +222,7 @@ view model =
         ]
     , channelsTable (Dict.values model.phxSocket.channels)
     , br [] []
+    , qtyView model
     , h3 [] [ text "Messages:" ]
     , newMessageForm model
     , ul [] ((List.reverse << List.map renderMessage) model.messages)
@@ -214,6 +252,12 @@ renderMessage : String -> Html Msg
 renderMessage str =
   li [] [ text str ]
 
+qtyView : Model -> Html Msg
+qtyView model =
+      input [ type' "number"
+            , value (toString model.qty)
+            , onInput SendData
+            ] []
 
 
 userParams : String -> JE.Value

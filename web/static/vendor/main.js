@@ -8836,9 +8836,9 @@ var _user$project$Chat$channelsTable = function (channels) {
 			]));
 };
 var _user$project$Chat$socketServer = 'ws://localhost:4000/socket/websocket';
-var _user$project$Chat$Model = F4(
-	function (a, b, c, d) {
-		return {code: a, newMessage: b, messages: c, phxSocket: d};
+var _user$project$Chat$Model = F5(
+	function (a, b, c, d, e) {
+		return {code: a, newMessage: b, messages: c, qty: d, phxSocket: e};
 	});
 var _user$project$Chat$ChatMessage = F2(
 	function (a, b) {
@@ -8849,6 +8849,15 @@ var _user$project$Chat$chatMessageDecoder = A3(
 	_user$project$Chat$ChatMessage,
 	A2(_elm_lang$core$Json_Decode_ops[':='], 'user', _elm_lang$core$Json_Decode$string),
 	A2(_elm_lang$core$Json_Decode_ops[':='], 'body', _elm_lang$core$Json_Decode$string));
+var _user$project$Chat$ChatData = F2(
+	function (a, b) {
+		return {user: a, qty: b};
+	});
+var _user$project$Chat$chatDataDecoder = A3(
+	_elm_lang$core$Json_Decode$object2,
+	_user$project$Chat$ChatData,
+	A2(_elm_lang$core$Json_Decode_ops[':='], 'user', _elm_lang$core$Json_Decode$string),
+	A2(_elm_lang$core$Json_Decode_ops[':='], 'qty', _elm_lang$core$Json_Decode$int));
 var _user$project$Chat$NoOp = {ctor: 'NoOp'};
 var _user$project$Chat$ShowLeftMessage = function (a) {
 	return {ctor: 'ShowLeftMessage', _0: a};
@@ -8858,6 +8867,25 @@ var _user$project$Chat$ShowJoinedMessage = function (a) {
 };
 var _user$project$Chat$LeaveChannel = {ctor: 'LeaveChannel'};
 var _user$project$Chat$JoinChannel = {ctor: 'JoinChannel'};
+var _user$project$Chat$SendData = function (a) {
+	return {ctor: 'SendData', _0: a};
+};
+var _user$project$Chat$qtyView = function (model) {
+	return A2(
+		_elm_lang$html$Html$input,
+		_elm_lang$core$Native_List.fromArray(
+			[
+				_elm_lang$html$Html_Attributes$type$('number'),
+				_elm_lang$html$Html_Attributes$value(
+				_elm_lang$core$Basics$toString(model.qty)),
+				_elm_lang$html$Html_Events$onInput(_user$project$Chat$SendData)
+			]),
+		_elm_lang$core$Native_List.fromArray(
+			[]));
+};
+var _user$project$Chat$ReceiveData = function (a) {
+	return {ctor: 'ReceiveData', _0: a};
+};
 var _user$project$Chat$ReceiveChatMessage = function (a) {
 	return {ctor: 'ReceiveChatMessage', _0: a};
 };
@@ -8869,12 +8897,13 @@ var _user$project$Chat$initPhxSocket = A4(
 	_fbonetti$elm_phoenix_socket$Phoenix_Socket$withDebug(
 		_fbonetti$elm_phoenix_socket$Phoenix_Socket$init(_user$project$Chat$socketServer)));
 var _user$project$Chat$initModel = function (code) {
-	return A4(
+	return A5(
 		_user$project$Chat$Model,
 		code,
 		'',
 		_elm_lang$core$Native_List.fromArray(
 			[]),
+		0,
 		_user$project$Chat$initPhxSocket);
 };
 var _user$project$Chat$init = function (flags) {
@@ -8987,6 +9016,55 @@ var _user$project$Chat$update = F2(
 				} else {
 					return {ctor: '_Tuple2', _0: model, _1: _elm_lang$core$Platform_Cmd$none};
 				}
+			case 'ReceiveData':
+				var _p9 = A2(
+					_elm_lang$core$Json_Decode$decodeValue,
+					_user$project$Chat$chatDataDecoder,
+					A2(_elm_lang$core$Debug$log, 'receiveData', _p3._0));
+				if (_p9.ctor === 'Ok') {
+					return {
+						ctor: '_Tuple2',
+						_0: _elm_lang$core$Native_Utils.update(
+							model,
+							{qty: _p9._0.qty}),
+						_1: _elm_lang$core$Platform_Cmd$none
+					};
+				} else {
+					return {
+						ctor: '_Tuple2',
+						_0: A2(_elm_lang$core$Debug$log, 'error', model),
+						_1: _elm_lang$core$Platform_Cmd$none
+					};
+				}
+			case 'SendData':
+				var payload = _elm_lang$core$Json_Encode$object(
+					_elm_lang$core$Native_List.fromArray(
+						[
+							{
+							ctor: '_Tuple2',
+							_0: 'user',
+							_1: _elm_lang$core$Json_Encode$string(model.code)
+						},
+							{
+							ctor: '_Tuple2',
+							_0: 'qty',
+							_1: _elm_lang$core$Json_Encode$string(_p3._0)
+						}
+						]));
+				var push$ = A2(
+					_fbonetti$elm_phoenix_socket$Phoenix_Push$withPayload,
+					payload,
+					A2(_fbonetti$elm_phoenix_socket$Phoenix_Push$init, 'update:qty', 'rooms:lobby'));
+				var _p10 = A2(_fbonetti$elm_phoenix_socket$Phoenix_Socket$push, push$, model.phxSocket);
+				var phxSocket = _p10._0;
+				var phxCmd = _p10._1;
+				return {
+					ctor: '_Tuple2',
+					_0: _elm_lang$core$Native_Utils.update(
+						model,
+						{phxSocket: phxSocket}),
+					_1: A2(_elm_lang$core$Platform_Cmd$map, _user$project$Chat$PhoenixMsg, phxCmd)
+				};
 			case 'JoinChannel':
 				var channel = A2(
 					_fbonetti$elm_phoenix_socket$Phoenix_Channel$onClose,
@@ -9000,9 +9078,9 @@ var _user$project$Chat$update = F2(
 							_fbonetti$elm_phoenix_socket$Phoenix_Channel$withPayload,
 							_user$project$Chat$userParams(model.code),
 							_fbonetti$elm_phoenix_socket$Phoenix_Channel$init('rooms:lobby'))));
-				var _p9 = A2(_fbonetti$elm_phoenix_socket$Phoenix_Socket$join, channel, model.phxSocket);
-				var phxSocket = _p9._0;
-				var phxCmd = _p9._1;
+				var _p11 = A2(_fbonetti$elm_phoenix_socket$Phoenix_Socket$join, channel, model.phxSocket);
+				var phxSocket = _p11._0;
+				var phxCmd = _p11._1;
 				return {
 					ctor: '_Tuple2',
 					_0: _elm_lang$core$Native_Utils.update(
@@ -9011,9 +9089,9 @@ var _user$project$Chat$update = F2(
 					_1: A2(_elm_lang$core$Platform_Cmd$map, _user$project$Chat$PhoenixMsg, phxCmd)
 				};
 			case 'LeaveChannel':
-				var _p10 = A2(_fbonetti$elm_phoenix_socket$Phoenix_Socket$leave, 'rooms:lobby', model.phxSocket);
-				var phxSocket = _p10._0;
-				var phxCmd = _p10._1;
+				var _p12 = A2(_fbonetti$elm_phoenix_socket$Phoenix_Socket$leave, 'rooms:lobby', model.phxSocket);
+				var phxSocket = _p12._0;
+				var phxCmd = _p12._1;
 				return {
 					ctor: '_Tuple2',
 					_0: _elm_lang$core$Native_Utils.update(
@@ -9126,6 +9204,7 @@ var _user$project$Chat$view = function (model) {
 					[]),
 				_elm_lang$core$Native_List.fromArray(
 					[])),
+				_user$project$Chat$qtyView(model),
 				A2(
 				_elm_lang$html$Html$h3,
 				_elm_lang$core$Native_List.fromArray(
@@ -9139,9 +9218,9 @@ var _user$project$Chat$view = function (model) {
 				_elm_lang$html$Html$ul,
 				_elm_lang$core$Native_List.fromArray(
 					[]),
-				function (_p11) {
+				function (_p13) {
 					return _elm_lang$core$List$reverse(
-						A2(_elm_lang$core$List$map, _user$project$Chat$renderMessage, _p11));
+						A2(_elm_lang$core$List$map, _user$project$Chat$renderMessage, _p13));
 				}(model.messages))
 			]));
 };
